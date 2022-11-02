@@ -5,52 +5,67 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.Extensions.Logging;
 using static System.Console;
 
-using (var dbContext = new AuthorContext())
+using (var dbContext = new EventContext())
 {
-    await AuthorContext.InitializeAsync(dbContext);
+    await EventContext.InitializeAsync(dbContext);
 }
 
-using (var dbContext = new AuthorContext())
+using (var dbContext = new EventContext())
 {
     dbContext.Log = WriteLine;
 
-    dbContext.Authors.Add(
-        new Author
+    dbContext.EventInboxes.Add(
+        new EventAInbox
         {
-            Name = "Maddy Montaquila",
-            Contact = new ContactDetails
+            Event = new EventA
             {
-                Phone = "01632 12345",
-                Address = new Address(
-                    street: "1 Main St",
-                    city: "Camberwick Green",
-                    postcode: "CW1 5ZH",
-                    country: "UK"
-                )
+                Name = "Maddy Montaquila",
+                ProcessEarliest = DateTimeOffset.Now.AddMinutes(5),
             }
+        }
+    );
+
+    dbContext.EventInboxes.Add(
+        new EventBInbox
+        {
+            Event = new EventB { Name = "Jeremy Likness", Age = 43, }
         }
     );
 
     await dbContext.SaveChangesAsync();
 }
 
-using (var dbContext = new AuthorContext())
+using (var dbContext = new EventContext())
 {
     dbContext.Log = WriteLine;
 
-    var author = await dbContext.Authors.SingleAsync(x => x.Name == "Maddy Montaquila");
+    var author = await dbContext.EventAs.SingleAsync(x => x.Event.Name == "Maddy Montaquila");
 
     WriteLine(author);
 }
 
 namespace JsonColumns
 {
-    public class AuthorContext : DbContext
+    public class EventA
+    {
+        public string Name { get; set; } = null!;
+        public DateTimeOffset? ProcessEarliest { get; set; }
+    }
+
+    public class EventB
+    {
+        public string Name { get; set; } = null!;
+        public int Age { get; set; }
+    }
+
+    public class EventContext : DbContext
     {
         public Action<string>? Log { get; set; }
         public LogLevel LogLevel { get; set; } = LogLevel.Information;
 
-        public DbSet<Author> Authors { get; set; }
+        public DbSet<EventInbox> EventInboxes { get; set; }
+        public DbSet<EventAInbox> EventAs { get; set; }
+        public DbSet<EventBInbox> EventBs { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
             optionsBuilder
@@ -65,10 +80,10 @@ namespace JsonColumns
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.ApplyConfigurationsFromAssembly(typeof(AuthorContext).Assembly);
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(EventContext).Assembly);
         }
 
-        public static async Task InitializeAsync(AuthorContext context)
+        public static async Task InitializeAsync(EventContext context)
         {
             await context.Database.EnsureDeletedAsync();
 
@@ -76,46 +91,47 @@ namespace JsonColumns
         }
     }
 
-    public class ContactDetails
+    public sealed class EventAInbox : EventInbox
     {
-        public Address Address { get; set; } = null!;
-        public string? Phone { get; set; }
-    }
+        public EventA Event { get; set; } = null!;
 
-    public class Address
-    {
-        public Address(string street, string city, string postcode, string country)
+        internal sealed class Configuration : IEntityTypeConfiguration<EventAInbox>
         {
-            Street = street;
-            City = city;
-            Postcode = postcode;
-            Country = country;
-        }
-
-        public string Street { get; set; }
-        public string City { get; set; }
-        public string Postcode { get; set; }
-        public string Country { get; set; }
-    }
-
-    public class Author
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = null!;
-        public ContactDetails Contact { get; set; } = null!;
-
-        internal sealed class Configuration : IEntityTypeConfiguration<Author>
-        {
-            public void Configure(EntityTypeBuilder<Author> builder)
+            public void Configure(EntityTypeBuilder<EventAInbox> builder)
             {
                 builder.OwnsOne(
-                    author => author.Contact,
-                    ownedNavigationBuilder =>
-                    {
-                        ownedNavigationBuilder.ToJson();
-                        ownedNavigationBuilder.OwnsOne(contactDetails => contactDetails.Address);
-                    }
+                    e => e.Event,
+                    ownedNavigationBuilder => ownedNavigationBuilder.ToJson()
                 );
+            }
+        }
+    }
+
+    public sealed class EventBInbox : EventInbox
+    {
+        public EventB Event { get; set; } = null!;
+
+        internal sealed class Configuration : IEntityTypeConfiguration<EventBInbox>
+        {
+            public void Configure(EntityTypeBuilder<EventBInbox> builder)
+            {
+                builder.OwnsOne(
+                    e => e.Event,
+                    ownedNavigationBuilder => ownedNavigationBuilder.ToJson()
+                );
+            }
+        }
+    }
+
+    public abstract class EventInbox
+    {
+        public int Id { get; set; }
+
+        internal sealed class BaseConfiguration : IEntityTypeConfiguration<EventInbox>
+        {
+            public void Configure(EntityTypeBuilder<EventInbox> builder)
+            {
+                builder.ToTable("EventInbox");
             }
         }
     }
